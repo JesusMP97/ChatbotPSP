@@ -1,6 +1,8 @@
 package com.example.chatbotpsp;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -22,6 +24,15 @@ import com.example.chatbotpsp.API.ChatterBotSession;
 import com.example.chatbotpsp.API.ChatterBotType;
 import com.example.chatbotpsp.API.TextToSpeechActivity;
 import com.example.chatbotpsp.API.Utils;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -37,18 +48,20 @@ import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
-    Button btSend;
-    ImageButton btVoice;
+    private static final String TAG = "xyz";
+    ImageButton btVoice, btSend;
     EditText etInput;
-    TextView tvTest;
     pl.droidsonroids.gif.GifImageView gif;
     ChatterBot bot;
     ChatterBotSession botSession;
@@ -58,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
     String str = "";
     String translation = "";
     ArrayList<String> result = null;
+    Mensaje holderMensaje;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
         initComponents();
         initEvents();
         initBot();
+        Toast.makeText(this, FirebaseAuth.getInstance().getCurrentUser().getUid(), Toast.LENGTH_SHORT).show();
     }
 
     private void initComponents() {
@@ -75,12 +90,15 @@ public class MainActivity extends AppCompatActivity {
         etInput = findViewById(R.id.etInput);
         recyclerView = findViewById(R.id.recyclerView);
         gif = findViewById(R.id.gif);
-        tvTest = findViewById(R.id.tvTest);
+        Toolbar toolbar = findViewById(R.id.toolbarChatbot);
+        setSupportActionBar(toolbar);
+        toolbar.setTitle("Chatbot");
 
         adapter = new AdapterMultiType(this);
         LinearLayoutManager llm = new LinearLayoutManager(this);
         recyclerView.setLayoutManager(llm);
         recyclerView.setAdapter(adapter);
+
     }
 
     private void initEvents() {
@@ -90,9 +108,9 @@ public class MainActivity extends AppCompatActivity {
                 //btSend.setClickable(false);
                 str = etInput.getText().toString();
                 TranslateToEng translateTask = new TranslateToEng(str);
-                adapter.mensajes.add(new Mensaje(etInput.getText().toString(), true));
-                adapter.notifyDataSetChanged();
-                recyclerView.scrollToPosition(adapter.mensajes.size() - 1);
+                Date currentDatetime = Calendar.getInstance().getTime();
+                String time = currentDatetime.getHours()+":"+currentDatetime.getMinutes();
+                holderMensaje = new Mensaje(time, etInput.getText().toString(), "placeholder",true);
                 etInput.setText("");
                 gif.setVisibility(View.VISIBLE);
                 lngFrom = "es";
@@ -119,24 +137,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        if(requestCode==5) {
-            if(resultCode==RESULT_OK && data!=null) {
-                result = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-                etInput.setText(result.get(0));
-            }
-        }
-    }
-
-    public void doTheChat(){
-        gif.setVisibility(View.GONE);
-        tvTest.setText(tvTest.getText() + "User: " + translation + "\n");
-        new Chat().execute();
-    }
-
     private void initBot() {
         ChatterBotFactory factory = new ChatterBotFactory();
 
@@ -149,49 +149,50 @@ public class MainActivity extends AppCompatActivity {
         botSession = bot.createSession();
     }
 
-    // POST
-    // https://www.bing.com/ttranslatev3
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
 
-    // HEADERS
-    // HEADER NAME: Content-type / application/x-www-form-urlencoded
-    // User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36
+        if(requestCode==5) {
+            if(resultCode==RESULT_OK && data!=null) {
+                result = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                etInput.setText(result.get(0));
+            }
+        }
+    }
 
-    // BODY
-    // fromLang=es
-    // text=Soy programador
-    // to=en
-    private void chat(String msg) {
+    public void doTheChat(){ // La traduccion del mensaje del usuario llega
+        holderMensaje.setSentenceEn(translation);
+        adapter.mensajes.add(holderMensaje);
+        saveMessage(holderMensaje);
+        adapter.notifyDataSetChanged();
+        recyclerView.scrollToPosition(adapter.mensajes.size() - 1);
+        gif.setVisibility(View.GONE);
+        new Chat().execute();
+    }
+
+    private void chat(String msg) { // El mensaje del usuario traducido se envia al bot
         try {
             String response = botSession.think(msg);
+            Date currentDatetime = Calendar.getInstance().getTime();
+            String time = currentDatetime.getHours()+":"+currentDatetime.getMinutes();
+            holderMensaje = new Mensaje(time, "placeholder", response,false);
             new TranslateToEs(response).execute();
         }catch(Exception e){
             Log.v("xyz", "Error: " + e.getMessage());
         }
     }
 
-    private void showBotResponse(){
-        adapter.mensajes.add(new Mensaje(translation, false));
+    private void showBotResponse(){ // La respuesta del bot se recibe
+        holderMensaje.setSentenceEs(translation);
+        adapter.mensajes.add(holderMensaje);
+        saveMessage(holderMensaje);
         adapter.notifyDataSetChanged();
         recyclerView.scrollToPosition(adapter.mensajes.size() - 1);
         //btSend.setClickable(true);
         gif.setVisibility(View.GONE);
-        new TextToSpeechActivity(adapter.mensajes.get(adapter.mensajes.size()-1).mensaje, this);
+        new TextToSpeechActivity(adapter.mensajes.get(adapter.mensajes.size()-1).sentenceEs, this);
     }
-
-    /*public static String getTextFromUrl(String src) {
-        StringBuffer out = new StringBuffer();
-        try {
-            URL url = new URL(src);
-            BufferedReader in = new BufferedReader(new InputStreamReader(url.openStream()));
-            String line;
-            while ((line = in.readLine()) != null) {
-                out.append(line + "\n");
-            }
-            in.close();
-        } catch (IOException e) {
-        }
-        return out.toString();
-    }*/
 
     public String decomposeJson(String json){
         String translationResult = "Could not get";
@@ -206,6 +207,50 @@ public class MainActivity extends AppCompatActivity {
             translationResult = e.getLocalizedMessage();
         }
         return translationResult;
+    }
+
+    private void saveMessage(Mensaje mensaje) {
+        FirebaseDatabase database = FirebaseDatabase.getInstance();
+        String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        DatabaseReference referenciaItem = database.getReference(uid);
+        referenciaItem.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                Log.v(TAG, "data changed: " + dataSnapshot.toString());
+            }
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+                Log.v(TAG, "error: " + databaseError.toException());
+                Toast.makeText(MainActivity.this, databaseError.toString(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        Date currentDate = Calendar.getInstance().getTime();
+        Map<String, Object> map = new HashMap<>();
+        String key = referenciaItem.child(getCurrentDate()).push().getKey();
+        map.put(getCurrentDate() + "/" + key, mensaje.toMap());
+        referenciaItem.updateChildren(map).addOnCompleteListener(new OnCompleteListener<Void>() {
+            @Override
+            public void onComplete(@NonNull Task<Void> task) {
+                if (task.isSuccessful()) {
+                    Log.v(TAG, "task succesfull");
+                } else {
+                    Log.v(TAG, task.getException().toString());
+                    Toast.makeText(MainActivity.this, task.getException().toString(), Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
+
+    private String getCurrentDate(){
+        Calendar calendar = Calendar.getInstance(TimeZone.getDefault());
+
+        int currentYear = calendar.get(Calendar.YEAR);
+        int currentMonth = calendar.get(Calendar.MONTH) + 1;
+        int currentDay = calendar.get(Calendar.DAY_OF_MONTH);
+
+        String date = currentDay + "-" +  currentMonth + "-" + currentYear;
+        return date;
     }
 
     private class Chat extends AsyncTask<Void, Void, Void>{

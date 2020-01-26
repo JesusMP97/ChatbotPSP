@@ -39,7 +39,7 @@ public class AdapterMultiType extends RecyclerView.Adapter<RecyclerView.ViewHold
 
     @Override
     public int getItemViewType(int position) {
-        if (mensajes.get(position).humano) {
+        if (mensajes.get(position).user) {
             return TYPE_USER;
         } else {
             return TYPE_BOT;
@@ -62,29 +62,33 @@ public class AdapterMultiType extends RecyclerView.Adapter<RecyclerView.ViewHold
 
     class UserViewHolder extends RecyclerView.ViewHolder {
 
-        private TextView tvMensaje;
+        private TextView tvMensaje, tvHora;
 
         UserViewHolder(@NonNull View itemView) {
             super(itemView);
             tvMensaje = itemView.findViewById(R.id.tvMensaje);
+            tvHora = itemView.findViewById(R.id.tvHora);
         }
 
         void setMensajeDetails(Mensaje mensaje) {
-            tvMensaje.setText(mensaje.mensaje);
+            tvMensaje.setText(mensaje.sentenceEs);
+            tvHora.setText(mensaje.time);
         }
     }
 
     class BotViewHolder extends RecyclerView.ViewHolder {
 
-        private TextView tvMensaje;
+        private TextView tvMensaje, tvHora;
 
         BotViewHolder(@NonNull View itemView) {
             super(itemView);
             tvMensaje = itemView.findViewById(R.id.tvMensaje);
+            tvHora = itemView.findViewById(R.id.tvHora);
         }
 
         void setMensajeDetails(Mensaje mensaje) {
-            tvMensaje.setText(mensaje.mensaje);
+            tvMensaje.setText(mensaje.sentenceEs);
+            tvHora.setText(mensaje.time);
         }
     }
 
