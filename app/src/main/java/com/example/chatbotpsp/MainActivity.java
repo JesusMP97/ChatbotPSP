@@ -1,6 +1,7 @@
 package com.example.chatbotpsp;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -15,7 +16,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.chatbotpsp.API.ChatterBot;
@@ -26,8 +26,8 @@ import com.example.chatbotpsp.API.TextToSpeechActivity;
 import com.example.chatbotpsp.API.Utils;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
-import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -38,24 +38,15 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
-import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -72,6 +63,11 @@ public class MainActivity extends AppCompatActivity {
     String translation = "";
     ArrayList<String> result = null;
     Mensaje holderMensaje;
+    ArrayList<Mensaje> mensajes = new ArrayList();
+    final String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
+    final FirebaseDatabase database = FirebaseDatabase.getInstance();
+    final DatabaseReference referenciaUserItems = database.getReference("data/" + uid);
+    int contadorTEST = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,7 +77,7 @@ public class MainActivity extends AppCompatActivity {
         initComponents();
         initEvents();
         initBot();
-        Toast.makeText(this, FirebaseAuth.getInstance().getCurrentUser().getUid(), Toast.LENGTH_SHORT).show();
+        adapter.notifyDataSetChanged();
     }
 
     private void initComponents() {
@@ -102,6 +98,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initEvents() {
+        retrieveData();
         btSend.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -110,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
                 TranslateToEng translateTask = new TranslateToEng(str);
                 Date currentDatetime = Calendar.getInstance().getTime();
                 String time = currentDatetime.getHours()+":"+currentDatetime.getMinutes();
-                holderMensaje = new Mensaje(time, etInput.getText().toString(), "placeholder",true);
+                holderMensaje = new Mensaje(time, etInput.getText().toString(), "placeholder","User");
                 etInput.setText("");
                 gif.setVisibility(View.VISIBLE);
                 lngFrom = "es";
@@ -163,7 +160,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void doTheChat(){ // La traduccion del mensaje del usuario llega
         holderMensaje.setSentenceEn(translation);
-        adapter.mensajes.add(holderMensaje);
+        //adapter.mensajes.add(holderMensaje);
         saveMessage(holderMensaje);
         adapter.notifyDataSetChanged();
         recyclerView.scrollToPosition(adapter.mensajes.size() - 1);
@@ -176,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
             String response = botSession.think(msg);
             Date currentDatetime = Calendar.getInstance().getTime();
             String time = currentDatetime.getHours()+":"+currentDatetime.getMinutes();
-            holderMensaje = new Mensaje(time, "placeholder", response,false);
+            holderMensaje = new Mensaje(time, "placeholder", response,"Bot");
             new TranslateToEs(response).execute();
         }catch(Exception e){
             Log.v("xyz", "Error: " + e.getMessage());
@@ -185,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void showBotResponse(){ // La respuesta del bot se recibe
         holderMensaje.setSentenceEs(translation);
-        adapter.mensajes.add(holderMensaje);
+        //adapter.mensajes.add(holderMensaje);
         saveMessage(holderMensaje);
         adapter.notifyDataSetChanged();
         recyclerView.scrollToPosition(adapter.mensajes.size() - 1);
@@ -209,11 +206,127 @@ public class MainActivity extends AppCompatActivity {
         return translationResult;
     }
 
+    public void retrieveData(){
+        referenciaUserItems.orderByKey().addChildEventListener(new ChildEventListener() {
+            @Override
+            public void onChildAdded(DataSnapshot dataSnapshot, String prevChildKey) {
+                String date = dataSnapshot.getKey();
+                Mensaje sysMsg = new Mensaje(date,"System");
+                mensajes.add(sysMsg);
+                retrieveMessagesFromDate(date);
+            }
+
+            @Override
+            public void onChildChanged(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+
+            }
+
+            @Override
+            public void onChildRemoved(@NonNull DataSnapshot dataSnapshot) {
+
+            }
+
+            @Override
+            public void onChildMoved(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
+        if(contadorTEST > 0) {
+            Toast.makeText(this, "Numero de errores: " + contadorTEST, Toast.LENGTH_SHORT).show();
+            contadorTEST = 0;
+        }else{
+            Toast.makeText(this, "Datos cargados", Toast.LENGTH_SHORT).show();
+        }
+        adapter.setMensajes(mensajes);
+        adapter.notifyDataSetChanged();
+        recyclerView.scrollToPosition(adapter.mensajes.size() - 1);
+    }
+
+    private void retrieveMessagesFromDate(final String date) {
+        DatabaseReference referenciaDate = database.getReference("data/" + uid + "/" + date);
+        referenciaDate.orderByKey().addChildEventListener(new ChildEventListener() {
+            @Override
+            public void onChildAdded(DataSnapshot dataSnapshot, String prevChildKey) {
+                String msgKey = dataSnapshot.getKey();
+                retrieveMessageDetails(date, msgKey);
+            }
+
+            @Override
+            public void onChildChanged(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+
+            }
+
+            @Override
+            public void onChildRemoved(@NonNull DataSnapshot dataSnapshot) {
+
+            }
+
+            @Override
+            public void onChildMoved(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
+    }
+
+    private void retrieveMessageDetails(String date, String msgKey) {
+        DatabaseReference referenciaMsg = database.getReference("data/" + uid + "/" + date + "/" + msgKey);
+        final Mensaje mensajeLoader = new Mensaje();
+        referenciaMsg.orderByKey().addChildEventListener(new ChildEventListener() {
+            @Override
+            public void onChildAdded(DataSnapshot dataSnapshot, String prevChildKey) {
+                String dataKey = (String)dataSnapshot.getKey();
+                String dataValue = (String)dataSnapshot.getValue();
+                switch(dataKey){
+                    case "sentenceEn":  mensajeLoader.setSentenceEn(dataValue);
+                        break;
+                    case "sentenceEs":  mensajeLoader.setSentenceEs(dataValue);
+                        break;
+                    case "talker":  mensajeLoader.setTalker(dataValue);
+                        break;
+                    case "time":  mensajeLoader.setTime(dataValue);
+                        break;
+                }
+            }
+
+            @Override
+            public void onChildChanged(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+
+            }
+
+            @Override
+            public void onChildRemoved(@NonNull DataSnapshot dataSnapshot) {
+
+            }
+
+            @Override
+            public void onChildMoved(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
+        try {
+            mensajes.add(mensajeLoader);
+        }catch(Exception e){
+            contadorTEST++;
+        }
+    }
+
     private void saveMessage(Mensaje mensaje) {
-        FirebaseDatabase database = FirebaseDatabase.getInstance();
-        String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
-        DatabaseReference referenciaItem = database.getReference(uid);
-        referenciaItem.addValueEventListener(new ValueEventListener() {
+        referenciaUserItems.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 Log.v(TAG, "data changed: " + dataSnapshot.toString());
@@ -225,11 +338,10 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        Date currentDate = Calendar.getInstance().getTime();
         Map<String, Object> map = new HashMap<>();
-        String key = referenciaItem.child(getCurrentDate()).push().getKey();
+        String key = referenciaUserItems.child(getCurrentDate()).push().getKey();
         map.put(getCurrentDate() + "/" + key, mensaje.toMap());
-        referenciaItem.updateChildren(map).addOnCompleteListener(new OnCompleteListener<Void>() {
+        referenciaUserItems.updateChildren(map).addOnCompleteListener(new OnCompleteListener<Void>() {
             @Override
             public void onComplete(@NonNull Task<Void> task) {
                 if (task.isSuccessful()) {

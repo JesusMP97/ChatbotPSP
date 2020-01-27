@@ -6,8 +6,7 @@
 
     <color name="black">#000000</color>
     <color name="white">#FFFFFF</color>
-    <color name="gradientStart">#1981AA</color>
-    <color name="gradientEnd">#7E23D8</color>
+    <color name="lightBlue">#1981AA</color>
     <color name="grey">#8FDFDADA</color>
     <color name="greyLight">#BFF7F5F5</color>
     <color name="transparent">#00FFFFFF</color>
